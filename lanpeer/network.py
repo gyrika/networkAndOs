@@ -121,6 +121,9 @@ class PeerNode:
             return sorted(self.peers.values(), key=lambda peer: (peer.name.lower(), peer.host))
 
     def _remember(self, peer_id: str, name: str, host: str, port: int, manual: bool = False) -> None:
+        # A peer can be reachable at several addresses (127.0.0.1 via /connect, its LAN address via
+        # discovery). Keep the address sticky: manual contact sets it, discovery only moves it for
+        # peers never added manually, and address-only updates stay silent so the list doesn't flap.
         if not peer_id or peer_id == self.peer_id or not (1 <= port <= 65535):
             return
         now = time.monotonic()
@@ -131,9 +134,10 @@ class PeerNode:
                 self.peers[peer_id] = Peer(peer_id, name[:40], host, port, now, manual)
                 changed = True
             else:
-                changed = (old.name, old.host, old.port) != (name[:40], host, port)
+                changed = (old.name, old.port) != (name[:40], port)
                 old.name = name[:40]
-                old.host = host
+                if manual or not old.manual:
+                    old.host = host
                 old.port = port
                 old.last_seen = now
                 old.manual |= manual
